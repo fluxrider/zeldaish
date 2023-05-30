@@ -149,8 +149,6 @@ struct axis {
 };
 
 int main(int argc, char * argv[]) {
-  char tmp_buff[256];
-
   // window
   int W = 256;
   int H = 224;
@@ -780,7 +778,7 @@ int main(int argc, char * argv[]) {
     }
 
     // fps
-    //dprintf(gfx, "text DejaVuSans-Bold.ttf 1 0 255 16 top left 2 noclip 0 ffffff 00ff00 0 ms:%d\\nfps:%2.1f\n", (int)(delta_time * 1000), 1 / (double)delta_time);
+    { char tmp_buff[256]; snprintf(tmp_buff, sizeof(tmp_buff), "ms:%d", (int)(delta_time * 1000)); DrawTextEx(font, tmp_buff, (Vector2){1,0}, 16, 1, WHITE); }
 
     // flush
     EndMode2D();
