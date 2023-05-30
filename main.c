@@ -250,7 +250,7 @@ int main(int argc, char * argv[]) {
   struct rect warp;
   struct map_node * warp_map;
   struct rect item;
-  const char * item_id = NULL;
+  Texture2D * item_id = NULL;
   struct rect npc;
   char * npc_id = NULL;
 
@@ -260,7 +260,7 @@ int main(int argc, char * argv[]) {
   struct rect forward;
   forward.w = TS;
   forward.h = TS;
-  const char * held_item = NULL;
+  Texture2D * held_item = NULL;
   uint64_t kaboom_t0 = -1;
   const char * message = NULL;
   struct dict npc_state;
@@ -284,6 +284,7 @@ int main(int argc, char * argv[]) {
   double t0 = GetTime();
   while(running && !WindowShouldClose()) {
     double t = GetTime(); delta_time = t - t0; t0 = t;
+    //printf("DAVE tick %f\n", t);
     tick = (uint64_t)(t * 1000); // TODO is this ported right?
     
     UpdateMusicStream(bg);
@@ -291,6 +292,7 @@ int main(int argc, char * argv[]) {
     // parse map created with Tiled (https://www.mapeditor.org/)
     // [with many assumptions like tile size, single tileset across all maps, single warp rect, single npc]
     if(next_map) {
+      //printf("DAVE LOADING NEXT MAP BEGIN\n");
       layers_size = 0;
       warp_map = NULL;
       item_id = NULL;
@@ -497,6 +499,7 @@ int main(int argc, char * argv[]) {
       map = next_map;
       next_map = NULL;
       warping = false;
+      //printf("DAVE LOADING NEXT MAP DONE\n");
     }
 
     // input
@@ -592,11 +595,11 @@ int main(int argc, char * argv[]) {
       }
       // pickup items
       else if(item_id && collides_2D(&forward, &item)) {
-        if(strcmp(item_id, dict_get(&items, "water")) != 0 || (held_item && strcmp(held_item, dict_get(&items, "bottle")) == 0)) {
+        if(item_id != (Texture2D *)dict_get(&items, "water") || (held_item && held_item == (Texture2D *)dict_get(&items, "bottle"))) {
           held_item = item_id;
           item_id = NULL;
           dict_set(&ignore, held_item, true);
-          if(strcmp(held_item, dict_get(&items, "heart")) == 0) {
+          if(held_item == (Texture2D *)dict_get(&items, "heart")) {
             winner_t0 = tick;
           }
         }
@@ -610,7 +613,7 @@ int main(int argc, char * argv[]) {
             PlaySound(snd_elf_0);
             dict_set(&npc_state, "elf", 1);
           } else {
-            if(held_item && strcmp(held_item, dict_get(&items, "cane")) == 0) {
+            if(held_item && held_item == (Texture2D *)dict_get(&items, "cane")) {
               message = "A candy cane! Thank you so much. You may pass.";
               PlaySound(snd_elf_2);
               held_item = NULL;
@@ -623,7 +626,7 @@ int main(int argc, char * argv[]) {
           }
         } else if(strcmp(npc_id, "bottle") == 0) {
           if(state == 0) {
-            if(held_item && strcmp(held_item, dict_get(&items, "key")) == 0) {
+            if(held_item && held_item == (Texture2D *)dict_get(&items, "key")) {
               message = "You open the chest with the key, and find an empty bottle.";
               PlaySound(snd_open);
               held_item = dict_get(&items, npc_id);
@@ -639,7 +642,7 @@ int main(int argc, char * argv[]) {
           }
         } else if(strcmp(npc_id, "flame") == 0) {
           if(state == 0) {
-            if(held_item && strcmp(held_item, dict_get(&items, "water")) == 0) {
+            if(held_item && held_item == (Texture2D *)dict_get(&items, "water")) {
               message = "You douse the flame with your water bottle, and find a magic staff.";
               PlaySound(snd_flame);
               held_item = dict_get(&items, "staff");
@@ -648,7 +651,7 @@ int main(int argc, char * argv[]) {
             }
           }
         } else if(strcmp(npc_id, "wizard") == 0) {
-          if(state == 1 && held_item && strcmp(held_item, dict_get(&items, "staff")) == 0) {
+          if(state == 1 && held_item && held_item == (Texture2D *)dict_get(&items, "staff")) {
             message = "You found my staff. Thank you. Let me teach you the magic spell 'Kaboom'.";
             PlaySound(snd_wiz_1);
             dict_set(&npc_state, "wizard", 2);
@@ -667,7 +670,7 @@ int main(int argc, char * argv[]) {
           message = "This is princess Purple Dress's garden, and don't go pass it or eat the carrots please.";
           PlaySound(snd_garden);
         } else if(strcmp(npc_id, "dragon") == 0) {
-          if(held_item && strcmp(held_item, dict_get(&items, "spell")) == 0) {
+          if(held_item && held_item == (Texture2D *)dict_get(&items, "spell")) {
             dict_set(&ignore, "dragon", true); free(npc_id);
             npc_id = strdup("kaboom");
             held_item = NULL;
@@ -677,11 +680,13 @@ int main(int argc, char * argv[]) {
       SetMusicVolume(bg, .3);
     }
 
+    //printf("DAVE draw %f\n", t);
     BeginTextureMode(framebuffer);
     ClearBackground(BLACK);
     // hud
     const int HUD_H = 3 * TS;
     // draw tilemap
+    //printf("DAVE draw tilemap\n");
     for(int i = 0; i < layers_size; i++) {
       for(int row = 0; row < MAP_ROW; row++) {
         for(int col = 0; col < MAP_COL; col++) {
@@ -708,14 +713,17 @@ int main(int argc, char * argv[]) {
       }
     }
     // draw item
-    if(item_id && strcmp(item_id, dict_get(&items, "water")) != 0) {
-      DrawTexture(*(Texture2D *)dict_get(&items, item_id), item.x, item.y + HUD_H, WHITE);
+    if(item_id && item_id != (Texture2D *)dict_get(&items, "water")) {
+      //printf("DAVE draw item\n");
+      DrawTexture(*item_id, item.x, item.y + HUD_H, WHITE);
     }
     if(held_item) {
-      DrawTexture(*(Texture2D *)dict_get(&items, held_item), (W - TS) / 2.0, HUD_H / 2.0 - TS, WHITE);
+      //printf("DAVE draw held item\n");
+      DrawTexture(*held_item, (W - TS) / 2.0, HUD_H / 2.0 - TS, WHITE);
     }
     // draw npc
     if(npc_id) {
+      //printf("DAVE draw npc\n");
       Texture2D * res = dict_get(&npc_res, npc_id);
       if(res) {
         // case flame animation
@@ -751,10 +759,12 @@ int main(int argc, char * argv[]) {
       }
     }
     // draw player
+    //printf("DAVE draw player\n");
     DrawTexturePro(texture_princess, (Rectangle){1 + facing_frame * (14 + 2), 1 + facing_index * (24 + 2),facing_mirror?-14:14,24}, (Rectangle){px, py + HUD_H, 14, 24}, (Vector2){0,0}, 0, WHITE);  
     
     // message box
     if(message) {
+      //printf("DAVE draw message\n");
       double w = W * .8;
       double h = (H - HUD_H) * .3;
       int n = h / 10;
@@ -766,6 +776,7 @@ int main(int argc, char * argv[]) {
 
     // winner animation
     if(winner_t0 != -1) {
+      //printf("DAVE draw winner\n");
       double t = (tick - winner_t0) / 1000.0;
       t = bound_cyclic_back_and_forth_normalized(t);
       double cy = (H - HUD_H - TS) / 2 + HUD_H;
