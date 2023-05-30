@@ -1,5 +1,6 @@
 // Copyright 2023 David Lareau. This program is free software under the terms of the Zero Clause BSD.
-// gcc -o zeldaish main.c $(pkg-config --libs --cflags libxml-2.0) -lm
+// gcc --pedantic -Wall -Werror-implicit-function-declaration -Wno-pointer-sign -o zeldaish *.c $(pkg-config --libs --cflags libxml-2.0 raylib) -lm
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -12,6 +13,75 @@
 #include <libxml/parser.h>
 #include <math.h>
 #include "data-util.h"
+#include <raylib.h>
+
+static void center_fit(double bounds_w, double bounds_h, double surface_w, double surface_h, double * out_scale, double * out_x, double * out_y) { if ((bounds_w / bounds_h) > (surface_w / surface_h)) *out_scale = bounds_h / surface_h; else *out_scale = bounds_w / surface_w; if(out_x) *out_x = (bounds_w - surface_w * *out_scale) / 2; if(out_y) *out_y = (bounds_h - surface_h * *out_scale) / 2; }
+
+enum vk { LEFT, RIGHT, ACTION, UP, DOWN };
+enum vk_filter { JOY_0 = 1, JOY_1 = 2, JOY_2 = 4, JOY_3 = 8, KEYBOARD = 16, ALL_INPUT = 0xFFFF };
+static bool gamepad_trust[4];
+double vk_key(enum vk k) {
+  const int filter = ALL_INPUT;
+  int key = -1, key2 = -1, button = -1, button2 = -1, axis = -1; double axis_min, axis_max;
+  switch(k) {
+    case LEFT: key = KEY_LEFT; key2 = KEY_A; button = GAMEPAD_BUTTON_LEFT_FACE_LEFT; axis = GAMEPAD_AXIS_LEFT_X; axis_min = -1; axis_max = -.4; break;
+    case RIGHT: key = KEY_RIGHT; key2 = KEY_D; button = GAMEPAD_BUTTON_LEFT_FACE_RIGHT; axis = GAMEPAD_AXIS_LEFT_X; axis_min = .4; axis_max = 1; break;
+    case UP: key = KEY_UP; key2 = KEY_W; button = GAMEPAD_BUTTON_LEFT_FACE_UP; axis = GAMEPAD_AXIS_LEFT_Y; axis_min = -1; axis_max = -.4; break;
+    case DOWN: key = KEY_DOWN; key2 = KEY_S; button = GAMEPAD_BUTTON_LEFT_FACE_DOWN; axis = GAMEPAD_AXIS_LEFT_Y; axis_min = .4; axis_max = 1; break;
+    case ACTION: key = KEY_SPACE; key2 = KEY_X; button = GAMEPAD_BUTTON_RIGHT_FACE_DOWN; button2 = GAMEPAD_BUTTON_RIGHT_FACE_RIGHT; break;
+  }
+  if(filter & KEYBOARD) {
+    if(key != -1 && IsKeyDown(key)) return 1;
+    if(key2 != -1 && IsKeyDown(key2)) return 1;
+  }
+  for(int gamepad = 0; gamepad < 4; gamepad++) {
+    if(!IsGamepadAvailable(gamepad)) continue;
+    if(!gamepad_trust[gamepad]) gamepad_trust[gamepad] = IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_FACE_DOWN) | IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_FACE_LEFT) | IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_FACE_UP) | IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT) | IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT) | IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_RIGHT);
+    if(!gamepad_trust[gamepad]) continue;
+    if(gamepad == 0 && !(filter & JOY_0)) continue;
+    if(gamepad == 1 && !(filter & JOY_1)) continue;
+    if(gamepad == 2 && !(filter & JOY_2)) continue;
+    if(gamepad == 3 && !(filter & JOY_3)) continue;
+    if(button != -1 && IsGamepadButtonDown(gamepad, button)) return 1;
+    if(button2 != -1 && IsGamepadButtonDown(gamepad, button2)) return 1;
+    if(axis != -1) {
+      double value = GetGamepadAxisMovement(gamepad, axis);
+      if(value >= axis_min && value <= axis_max) return value / (axis_max - axis_min);
+    }
+  }
+  return 0;
+}
+double vk_key_released(enum vk k) {
+  const int filter = ALL_INPUT;
+  int key = -1, key2 = -1, button = -1, button2 = -1, axis = -1; double axis_min, axis_max;
+  switch(k) {
+    case LEFT: key = KEY_LEFT; key2 = KEY_A; button = GAMEPAD_BUTTON_LEFT_FACE_LEFT; axis = GAMEPAD_AXIS_LEFT_X; axis_min = -1; axis_max = -.4; break;
+    case RIGHT: key = KEY_RIGHT; key2 = KEY_D; button = GAMEPAD_BUTTON_LEFT_FACE_RIGHT; axis = GAMEPAD_AXIS_LEFT_X; axis_min = .4; axis_max = 1; break;
+    case UP: key = KEY_UP; key2 = KEY_W; button = GAMEPAD_BUTTON_LEFT_FACE_UP; axis = GAMEPAD_AXIS_LEFT_Y; axis_min = -1; axis_max = -.4; break;
+    case DOWN: key = KEY_DOWN; key2 = KEY_S; button = GAMEPAD_BUTTON_LEFT_FACE_DOWN; axis = GAMEPAD_AXIS_LEFT_Y; axis_min = .4; axis_max = 1; break;
+    case ACTION: key = KEY_SPACE; key2 = KEY_X; button = GAMEPAD_BUTTON_RIGHT_FACE_DOWN; button2 = GAMEPAD_BUTTON_RIGHT_FACE_RIGHT; break;
+  }
+  if(filter & KEYBOARD) {
+    if(key != -1 && IsKeyReleased(key)) return 1;
+    if(key2 != -1 && IsKeyReleased(key2)) return 1;
+  }
+  for(int gamepad = 0; gamepad < 4; gamepad++) {
+    if(!IsGamepadAvailable(gamepad)) continue;
+    if(!gamepad_trust[gamepad]) gamepad_trust[gamepad] = IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_FACE_DOWN) | IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_FACE_LEFT) | IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_FACE_UP) | IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT) | IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_LEFT) | IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_MIDDLE_RIGHT);
+    if(!gamepad_trust[gamepad]) continue;
+    if(gamepad == 0 && !(filter & JOY_0)) continue;
+    if(gamepad == 1 && !(filter & JOY_1)) continue;
+    if(gamepad == 2 && !(filter & JOY_2)) continue;
+    if(gamepad == 3 && !(filter & JOY_3)) continue;
+    if(button != -1 && IsGamepadButtonReleased(gamepad, button)) return 1;
+    if(button2 != -1 && IsGamepadButtonReleased(gamepad, button2)) return 1;
+    if(axis != -1) {
+      double value = GetGamepadAxisMovement(gamepad, axis);
+      if(value >= axis_min && value <= axis_max) return value / (axis_max - axis_min);
+    }
+  }
+  return 0;
+}
 
 // NOTES: cane / elf / key / chest / bottle / fountain / fire / staff / wizard / spell / dragon / heart
 
@@ -74,30 +144,41 @@ double bound_cyclic_back_and_forth_normalized(double x) {
   }
 }
 
-void main(int argc, char * argv[]) {
+struct axis {
+  double lx, ly;
+};
+
+int main(int argc, char * argv[]) {
   char tmp_buff[256];
 
-  // connect
-  const char * error;
-  struct srr evt;
-  struct srr gfs;
-  error = srr_init(&evt, "/zeldaish-evt", 8192, false, false, 3); if(error) { printf("srr_init(evt): %s\n", error); exit(EXIT_FAILURE); }
-  error = srr_init(&gfs, "/zeldaish-gfx", 8192, false, false, 3); if(error) { printf("srr_init(gfs): %s\n", error); exit(EXIT_FAILURE); }
-  struct srr_direct * emm = srr_direct(&evt);
-  struct srr_direct * gmm = srr_direct(&gfs);
-  int gfx = open("gfx.fifo", O_WRONLY); if(gfx == -1) { perror("open(gfx.fifo)"); exit(EXIT_FAILURE); }
-  int snd = open("snd.fifo", O_WRONLY); if(snd == -1) { perror("open(snd.fifo)"); exit(EXIT_FAILURE); }
-
-  // game setup
+  // window
   int W = 256;
   int H = 224;
+  bool fullscreen = false; Vector2 stored_window_position, stored_window_size;
+  InitWindow(W, H, argv[0]); SetWindowState(FLAG_WINDOW_RESIZABLE); SetWindowState(FLAG_VSYNC_HINT);
+  HideCursor();
+  RenderTexture2D framebuffer = LoadRenderTexture(W, H);
+  
+  // audio
+  InitAudioDevice();
   double bg_volume = .7;
-  dprintf(snd, "volume %f 1\n", bg_volume);
-  dprintf(snd, "stream bg.ogg\n");
-  dprintf(gfx, "title %s\n", argv[0]);
-  dprintf(gfx, "hq\n");
-  dprintf(gfx, "window %d %d\n", W, H);
-  dprintf(gfx, "cache DejaVuSans-Bold.ttf\n");
+  Music bg = LoadMusicStream("bg.ogg");
+  SetMusicVolume(bg, bg_volume);
+  PlayMusicStream(bg);
+  Sound snd_elf_0 = LoadSound("elf_0.ogg"); if(!snd_elf_0.stream.buffer) { exit(EXIT_FAILURE); }
+  Sound snd_elf_2 = LoadSound("elf_2.ogg"); if(!snd_elf_2.stream.buffer) { exit(EXIT_FAILURE); }
+  Sound snd_elf_1 = LoadSound("elf_1.ogg"); if(!snd_elf_1.stream.buffer) { exit(EXIT_FAILURE); }
+  Sound snd_open = LoadSound("open.ogg"); if(!snd_open.stream.buffer) { exit(EXIT_FAILURE); }
+  Sound snd_locked = LoadSound("locked.ogg"); if(!snd_locked.stream.buffer) { exit(EXIT_FAILURE); }
+  Sound snd_empty = LoadSound("empty.ogg"); if(!snd_empty.stream.buffer) { exit(EXIT_FAILURE); }
+  Sound snd_flame = LoadSound("flame.ogg"); if(!snd_flame.stream.buffer) { exit(EXIT_FAILURE); }
+  Sound snd_wiz_1 = LoadSound("wiz_1.ogg"); if(!snd_wiz_1.stream.buffer) { exit(EXIT_FAILURE); }
+  Sound snd_wiz_2 = LoadSound("wiz_2.ogg"); if(!snd_wiz_2.stream.buffer) { exit(EXIT_FAILURE); }
+  Sound snd_wiz_0 = LoadSound("wiz_0.ogg"); if(!snd_wiz_0.stream.buffer) { exit(EXIT_FAILURE); }
+  Sound snd_garden = LoadSound("garden.ogg"); if(!snd_garden.stream.buffer) { exit(EXIT_FAILURE); }
+  
+  // font
+  Font font = LoadFont("DejaVuSans-Bold.ttf");
 
   // world
   struct map_node fountain = {"fountain.tmx"};
@@ -128,31 +209,37 @@ void main(int argc, char * argv[]) {
   dict_init(&blocking_tiles, 0, false, false);
 
   // images
-  struct dict npc_res;
-  dict_init(&npc_res, 0, true, false);
-  dict_set(&npc_res, "elf", "boggart.CC0.crawl-tiles.png");
-  dict_set(&npc_res, "dragon", "dragon.CC0.crawl-tiles.png");
-  dict_set(&npc_res, "wizard", "human.CC0.crawl-tiles.png");
-  dict_set(&npc_res, "bottle", "chest_2_closed.CC0.crawl-tiles.png");
-  dict_set(&npc_res, "kaboom", "8.CC0.pixel-boy.png");
-  for(int i = 0; i < npc_res.size; i++) dprintf(gfx, "cache %s\n", dict_get_by_index(&npc_res, i));
-  dprintf(gfx, "cache chest_2_open.CC0.crawl-tiles.png\n");
-  dict_set(&npc_res, "flame", "dngn_altar_makhleb_flame%d.CC0.crawl-tiles.png"); // 1 to 8
-  for(int i = 1; i <= 8; i++) dprintf(gfx, "cache dngn_altar_makhleb_flame%d.CC0.crawl-tiles.png\n", i);
-  dprintf(gfx, "cache princess.clamp.png\n");
+  struct dict npc_res; dict_init(&npc_res, 0, true, false);
+  Texture2D texture_elf = LoadTexture("boggart.CC0.crawl-tiles.png"); dict_set(&npc_res, "elf", &texture_elf);
+  Texture2D texture_dragon = LoadTexture("dragon.CC0.crawl-tiles.png"); dict_set(&npc_res, "dragon", &texture_dragon);
+  Texture2D texture_wizard = LoadTexture("human.CC0.crawl-tiles.png"); dict_set(&npc_res, "wizard", &texture_wizard);
+  Texture2D texture_chest = LoadTexture("chest_2_closed.CC0.crawl-tiles.png"); dict_set(&npc_res, "bottle", &texture_chest);
+  Texture2D texture_kaboom = LoadTexture("8.CC0.pixel-boy.png"); dict_set(&npc_res, "kaboom", &texture_kaboom);
+  Texture2D texture_chest_2 = LoadTexture("chest_2_open.CC0.crawl-tiles.png");
+  Texture2D texture_flame[8] = {
+    LoadTexture("dngn_altar_makhleb_flame1.CC0.crawl-tiles.png"),
+    LoadTexture("dngn_altar_makhleb_flame2.CC0.crawl-tiles.png"),
+    LoadTexture("dngn_altar_makhleb_flame3.CC0.crawl-tiles.png"),
+    LoadTexture("dngn_altar_makhleb_flame4.CC0.crawl-tiles.png"),
+    LoadTexture("dngn_altar_makhleb_flame5.CC0.crawl-tiles.png"),
+    LoadTexture("dngn_altar_makhleb_flame6.CC0.crawl-tiles.png"),
+    LoadTexture("dngn_altar_makhleb_flame7.CC0.crawl-tiles.png"),
+    LoadTexture("dngn_altar_makhleb_flame8.CC0.crawl-tiles.png")
+  };
+  dict_set(&npc_res, "flame", texture_flame); // 1 to 8
+  Texture2D texture_princess = LoadTexture("princess.clamp.png");
   struct rect collision = {1, 14, 12, 8}; // hard-coded princess collision box
   struct dict items;
   dict_init(&items, 0, true, false);
-  dict_set(&items, "cane", "cane.resized.CC0.7soul1.png");
-  dict_set(&items, "key", "key.resized.CC0.7soul1.png");
-  dict_set(&items, "bottle", "bottle.resized.CC0.7soul1.png");
-  dict_set(&items, "water", "water.resized.CC0.7soul1.png");
-  dict_set(&items, "heart", "heart.resized.CC0.7soul1.png");
-  dict_set(&items, "staff", "staff02.CC0.crawl-tiles.png");
-  dict_set(&items, "spell", "scroll-thunder.CC0.pixel-boy.png");
-  for(int i = 0; i < items.size; i++) dprintf(gfx, "cache %s\n", dict_get_by_index(&items, i));
+  Texture2D texture_cane = LoadTexture("cane.resized.CC0.7soul1.png"); dict_set(&items, "cane", &texture_cane);
+  Texture2D texture_key = LoadTexture("key.resized.CC0.7soul1.png"); dict_set(&items, "key", &texture_key);
+  Texture2D texture_bottle = LoadTexture("bottle.resized.CC0.7soul1.png"); dict_set(&items, "bottle", &texture_bottle);
+  Texture2D texture_water = LoadTexture("water.resized.CC0.7soul1.png"); dict_set(&items, "water", &texture_water);
+  Texture2D texture_heart = LoadTexture("heart.resized.CC0.7soul1.png"); dict_set(&items, "heart", &texture_heart);
+  Texture2D texture_staff = LoadTexture("staff02.CC0.crawl-tiles.png"); dict_set(&items, "staff", &texture_staff);
+  Texture2D texture_spell = LoadTexture("scroll-thunder.CC0.pixel-boy.png"); dict_set(&items, "spell", &texture_spell);
   // for sake of demo, also preload the known tileset file
-  dprintf(gfx, "cache overworld.clamp.CC0.ArMM1998.png\n");
+  Texture2D texture_map;
 
   // map
   const int TS = 16;
@@ -183,40 +270,7 @@ void main(int argc, char * argv[]) {
   struct dict ignore;
   dict_init(&ignore, 0, true, false);
   bool running = true;
-  bool focused = true;
   uint64_t winner_t0 = -1;
-
-  // loading screen
-  int progress = 0;
-  while(running) {
-    // input
-    sprintf(emm->msg, focused? "" : "no-focus-mode"); error = srr_send(&evt, strlen(emm->msg)); if(error) { printf("srr_send(evt): %s\n", error); exit(EXIT_FAILURE); }
-    running &= !evt_released(&evt, K_ESC) && !evt_released(&evt, G0_HOME);
-    // progress bar
-    dprintf(gfx, "fill 000000 0 0 %d %d\n", W, H);
-    double w = W * .8;
-    double h = H * .1;
-    double x = (W - w) / 2;
-    double y = (H - h) / 2;
-    dprintf(gfx, "fill 004400 %f %f %f %f\n", x, y, w, h);
-    dprintf(gfx, "fill 00ff00 %f %f %f %f\n", x, y, w * (progress / 1000.0), h);
-    // progress numeric value
-    dprintf(gfx, "text DejaVuSans-Bold.ttf %f %f %f %f center center 1 noclip 0 ffffff 000000 .2 %.2f\n", x, y, w, h, progress / 1000.0);
-    // flush
-    dprintf(gfx, "flush\n");
-    sprintf(gmm->msg, "statall"); error = srr_send(&gfs, strlen(gmm->msg)); if(error) { printf("srr_send(gfs): %s\n", error); exit(EXIT_FAILURE); }
-    // I want to ensure we see the 100% frame, so break after flush
-    if(progress == 1000) break;
-    // read progress
-    int i = 0;
-    focused = gmm->msg[i++];
-    running &= !gmm->msg[i++];
-    i += 8; // skip over W/H
-    // progress
-    if(gmm->msg[i] == GFX_STAT_ERR) { printf("statall error %c%c%c\n", gmm->msg[i+1], gmm->msg[i+2], gmm->msg[i+3]); exit(EXIT_FAILURE); }
-    if(gmm->msg[i++] != GFX_STAT_ALL) { printf("unexpected statall result\n"); exit(EXIT_FAILURE); }
-    progress = *(int *)&gmm->msg[i];
-  }
 
   // game loop
   double delta_time = 0;
@@ -227,7 +281,15 @@ void main(int argc, char * argv[]) {
   int facing_frame = 0;
   uint64_t walking_t0;
   const int walking_period = 300;
-  while(running) {
+  SetTargetFPS(60);
+  bool go_fullscreen = true;
+  double t0 = GetTime();
+  while(running && !WindowShouldClose()) {
+    double t = GetTime(); delta_time = t - t0; t0 = t;
+    tick = (uint64_t)(t * 1000); // TODO is this ported right?
+    
+    UpdateMusicStream(bg);
+
     // parse map created with Tiled (https://www.mapeditor.org/)
     // [with many assumptions like tile size, single tileset across all maps, single warp rect, single npc]
     if(next_map) {
@@ -253,7 +315,7 @@ void main(int argc, char * argv[]) {
           while(tcur != NULL) {
             if(xmlStrcmp(tcur->name, "image") == 0) {
               tileset_image = xmlGetProp(tcur, "source");
-              dprintf(gfx, "cache %s\n", tileset_image);
+              texture_map = LoadTexture(tileset_image);
             }
             else if(xmlStrcmp(tcur->name, "tile") == 0) {
               xmlChar * id = xmlGetProp(tcur, "id");
@@ -440,14 +502,15 @@ void main(int argc, char * argv[]) {
     }
 
     // input
-    sprintf(emm->msg, focused? "" : "no-focus-mode"); error = srr_send(&evt, strlen(emm->msg)); if(error) { printf("srr_send(evt): %s\n", error); exit(EXIT_FAILURE); }
-    running &= !evt_released(&evt, K_ESC) && !evt_released(&evt, G0_HOME);
+    if(IsKeyPressed(KEY_F) || go_fullscreen) { if((fullscreen = !fullscreen)) { stored_window_position = GetWindowPosition(); stored_window_size = (Vector2){GetScreenWidth(),GetScreenHeight()}; SetWindowState(FLAG_WINDOW_UNDECORATED); SetWindowSize(GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor())); } else { ClearWindowState(FLAG_WINDOW_UNDECORATED); SetWindowPosition(stored_window_position.x, stored_window_position.y); SetWindowSize(stored_window_size.x, stored_window_size.y); } } go_fullscreen = false;
+    running &= !IsKeyPressed(KEY_ESCAPE);
+    
     // walking
-    struct evt_axis_and_triggers_normalized axis = evt_deadzoned(evt_axis_and_triggers(&evt, 0), .2, .2);
-    if(evt_held(&evt, G0_DOWN) || evt_held(&evt, K_S) || evt_held(&evt, K_DOWN)) axis.ly = fmin(1, axis.ly + 1);
-    if(evt_held(&evt, G0_UP) || evt_held(&evt, K_W) || evt_held(&evt, K_UP)) axis.ly = fmax(-1, axis.ly - 1);
-    if(evt_held(&evt, G0_RIGHT) || evt_held(&evt, K_D) || evt_held(&evt, K_RIGHT)) axis.lx = fmin(1, axis.lx + 1);
-    if(evt_held(&evt, G0_LEFT) || evt_held(&evt, K_A) || evt_held(&evt, K_LEFT)) axis.lx = fmax(-1, axis.lx - 1);
+    struct axis axis = {0, 0};
+    if(vk_key(DOWN)) axis.ly = fmin(1, axis.ly + 1);
+    if(vk_key(UP)) axis.ly = fmax(-1, axis.ly - 1);
+    if(vk_key(RIGHT)) axis.lx = fmin(1, axis.lx + 1);
+    if(vk_key(LEFT)) axis.lx = fmax(-1, axis.lx - 1);
     if(axis.lx != 0 || axis.ly != 0) {
       // up/down
       if(fabs(axis.ly) > fabs(axis.lx)) {
@@ -522,12 +585,12 @@ void main(int argc, char * argv[]) {
       if(!blocked_y) py = ny;
     }
     // action button (activate stuff forward, dismiss message box)
-    if(evt_released(&evt, G0_EAST) || evt_released(&evt, G0_SOUTH) || evt_released(&evt, K_X)) {
+    if(vk_key_released(ACTION)) {
       // dismiss dialog
       if(message) {
         message = NULL;
-        dprintf(snd, "channel stop 0\n");
-        dprintf(snd, "volume %f 1\n", bg_volume);
+        //dprintf(snd, "channel stop 0\n");
+        SetMusicVolume(bg, bg_volume);
       }
       // pickup items
       else if(item_id && collides_2D(&forward, &item)) {
@@ -546,41 +609,41 @@ void main(int argc, char * argv[]) {
         if(strcmp(npc_id, "elf") == 0) {
           if(state == 0) {
             message = "I'm hungry. I want candy.";
-            dprintf(snd, "channel stream 0 elf_0.ogg\n");
+            PlaySound(snd_elf_0);
             dict_set(&npc_state, "elf", 1);
           } else {
             if(held_item && strcmp(held_item, dict_get(&items, "cane")) == 0) {
               message = "A candy cane! Thank you so much. You may pass.";
-              dprintf(snd, "channel stream 0 elf_2.ogg\n");
+              PlaySound(snd_elf_2);
               held_item = NULL;
               dict_set(&ignore, "elf", true); free(npc_id); npc_id = NULL;
               dict_set(&npc_state, "elf", 2);
             } else {
               message = "I'm so hungry. I really want candy!";
-              dprintf(snd, "channel stream 0 elf_1.ogg\n");
+              PlaySound(snd_elf_1);
             }
           }
         } else if(strcmp(npc_id, "bottle") == 0) {
           if(state == 0) {
             if(held_item && strcmp(held_item, dict_get(&items, "key")) == 0) {
               message = "You open the chest with the key, and find an empty bottle.";
-              dprintf(snd, "channel stream 0 open.ogg\n");
+              PlaySound(snd_open);
               held_item = dict_get(&items, npc_id);
-              dict_set(&npc_res, "bottle", "chest_2_open.CC0.crawl-tiles.png");
+              dict_set(&npc_res, "bottle", &texture_chest_2);
               dict_set(&npc_state, "bottle", 1);
             } else {
               message = "The chest is locked.";
-              dprintf(snd, "channel stream 0 locked.ogg\n");
+              PlaySound(snd_locked);
             }
           } else if(state == 1) {
             message = "The chest is empty.";
-            dprintf(snd, "channel stream 0 empty.ogg\n");
+            PlaySound(snd_empty);
           }
         } else if(strcmp(npc_id, "flame") == 0) {
           if(state == 0) {
             if(held_item && strcmp(held_item, dict_get(&items, "water")) == 0) {
               message = "You douse the flame with your water bottle, and find a magic staff.";
-              dprintf(snd, "channel stream 0 flame.ogg\n");
+              PlaySound(snd_flame);
               held_item = dict_get(&items, "staff");
               dict_set(&ignore, "flame", true); free(npc_id); npc_id = NULL;
               dict_set(&npc_state, "flame", 1);
@@ -589,22 +652,22 @@ void main(int argc, char * argv[]) {
         } else if(strcmp(npc_id, "wizard") == 0) {
           if(state == 1 && held_item && strcmp(held_item, dict_get(&items, "staff")) == 0) {
             message = "You found my staff. Thank you. Let me teach you the magic spell 'Kaboom'.";
-            dprintf(snd, "channel stream 0 wiz_1.ogg\n");
+            PlaySound(snd_wiz_1);
             dict_set(&npc_state, "wizard", 2);
             held_item = dict_get(&items, "spell");
           } else {
             if(state == 2) {
               message = "Thank you for returning my staff.";
-              dprintf(snd, "channel stream 0 wiz_2.ogg\n");
+              PlaySound(snd_wiz_2);
             } else {
               message = "I cannot find my magic staff. Will you help?";
-              dprintf(snd, "channel stream 0 wiz_0.ogg\n");
+              PlaySound(snd_wiz_0);
               if(state == 0) dict_set(&npc_state, "wizard", 1);
             }
           }
         } else if(strcmp(npc_id, "garden") == 0) {
           message = "This is princess Purple Dress's garden, and don't go pass it or eat the carrots please.";
-          dprintf(snd, "channel stream 0 garden.ogg\n");
+          PlaySound(snd_garden);
         } else if(strcmp(npc_id, "dragon") == 0) {
           if(held_item && strcmp(held_item, dict_get(&items, "spell")) == 0) {
             dict_set(&ignore, "dragon", true); free(npc_id);
@@ -613,17 +676,13 @@ void main(int argc, char * argv[]) {
           }
         }
       }
-      if(message) dprintf(snd, "volume .3 1\n");
-    }
-    
-    // cheat
-    if(evt_released(&evt, K_C)) {
-      held_item = dict_get(&items, "spell");
+      SetMusicVolume(bg, .3);
     }
 
+    BeginTextureMode(framebuffer);
+    ClearBackground(BLACK);
     // hud
     const int HUD_H = 3 * TS;
-    dprintf(gfx, "fill 000000 0 0 %d %d\n", W, HUD_H);
     // draw tilemap
     for(int i = 0; i < layers_size; i++) {
       for(int row = 0; row < MAP_ROW; row++) {
@@ -645,27 +704,26 @@ void main(int argc, char * argv[]) {
             const int margin = 1;
             int tx = margin + (TS + 2 * margin) * (tile % tileset_columns);
             int ty = margin + (TS + 2 * margin) * (tile / tileset_columns);
-            dprintf(gfx, "draw %s %d %d %d %d %d %d\n", tileset_image, tx, ty, TS, TS, x, y);
+            DrawTextureRec(texture_map, (Rectangle){tx,ty,TS,TS}, (Vector2){x,y}, WHITE);
           }
         }
       }
     }
     // draw item
     if(item_id && strcmp(item_id, dict_get(&items, "water")) != 0) {
-      dprintf(gfx, "draw %s %f %f\n", item_id, item.x, item.y + HUD_H);
+      DrawTexture(*(Texture2D *)dict_get(&items, item_id), item.x, item.y + HUD_H, WHITE);
     }
     if(held_item) {
-      dprintf(gfx, "draw %s %f %f\n", held_item, (W - TS) / 2.0, HUD_H / 2.0 - TS);
+      DrawTexture(*(Texture2D *)dict_get(&items, held_item), (W - TS) / 2.0, HUD_H / 2.0 - TS, WHITE);
     }
     // draw npc
     if(npc_id) {
-      const char * res = dict_get(&npc_res, npc_id);
+      Texture2D * res = dict_get(&npc_res, npc_id);
       if(res) {
         // case flame animation
         if(strcmp(npc_id, "flame") == 0) {
           uint64_t flame_period = 400;
-          snprintf(tmp_buff, 256, res, (int)((tick % flame_period) / (double)flame_period * 8 + 1));
-          res = tmp_buff;
+          res = &res[(int)((tick % flame_period) / (double)flame_period) * 8];
         }
         double w = npc.w;
         double h = npc.h;
@@ -687,15 +745,15 @@ void main(int argc, char * argv[]) {
           } else {
             double sx = (int)((tick - kaboom_t0) / (double)kaboom_duration * 5) * 16;
             double sy = 0;
-            dprintf(gfx, "draw %s %f %f %f %f %f %f %f %f\n", res, sx, sy, 16.0, 16.0, x, y + HUD_H, w, h);
+            DrawTexturePro(*res, (Rectangle){sx,sy,16,16}, (Rectangle){x, y + HUD_H, w, h}, (Vector2){0,0}, 0, WHITE);  
           }
         } else {
-          dprintf(gfx, "draw %s %f %f %f %f\n", res, x, y + HUD_H, w, h);
+          DrawTexturePro(*res, (Rectangle){0,0,w,h}, (Rectangle){x, y + HUD_H, w, h}, (Vector2){0,0}, 0, WHITE);  
         }
       }
     }
     // draw player
-    dprintf(gfx, "draw princess.clamp.png %d %d 14 24 %f %f %s\n", 1 + facing_frame * (14 + 2), 1 + facing_index * (24 + 2), px, py + HUD_H, facing_mirror? "mx" : "");
+    DrawTexturePro(texture_princess, (Rectangle){1 + facing_frame * (14 + 2), 1 + facing_index * (24 + 2),facing_mirror?-14:14,24}, (Rectangle){px, py + HUD_H, 14, 24}, (Vector2){0,0}, 0, WHITE);  
     
     // message box
     if(message) {
@@ -704,8 +762,8 @@ void main(int argc, char * argv[]) {
       int n = h / 10;
       double x = (W - w) / 2;
       double y = (H - HUD_H - h) / 2 + HUD_H;
-      dprintf(gfx, "fill 88888888 %f %f %f %f\n", x, y, w, h);
-      dprintf(gfx, "text DejaVuSans-Bold.ttf %f %f %f %f center left %d noclip 0 ffffff 000000 .2 %s\n", x, y, w, h, n, message);
+      //dprintf(gfx, "fill 88888888 %f %f %f %f\n", x, y, w, h);
+      //dprintf(gfx, "text DejaVuSans-Bold.ttf %f %f %f %f center left %d noclip 0 ffffff 000000 .2 %s\n", x, y, w, h, n, message);
     }
 
     // winner animation
@@ -717,26 +775,40 @@ void main(int argc, char * argv[]) {
       double hw = W / 2;
       double hh = (H - HUD_H) / 2;
       for(double theta = 0; theta < 2 * M_PI; theta += M_PI / 5) {
-        dprintf(gfx, "draw %s %f %f\n", held_item, cx + hw * cos(theta) * t, cy + hh * sin(theta) * t);
+        //dprintf(gfx, "draw %s %f %f\n", held_item, cx + hw * cos(theta) * t, cy + hh * sin(theta) * t);
       }
     }
 
     // fps
-    dprintf(gfx, "text DejaVuSans-Bold.ttf 1 0 255 16 top left 2 noclip 0 ffffff 00ff00 0 ms:%d\\nfps:%2.1f\n", (int)(delta_time * 1000), 1 / (double)delta_time);
+    //dprintf(gfx, "text DejaVuSans-Bold.ttf 1 0 255 16 top left 2 noclip 0 ffffff 00ff00 0 ms:%d\\nfps:%2.1f\n", (int)(delta_time * 1000), 1 / (double)delta_time);
 
     // flush
-    dprintf(gfx, "flush\n");
-    sprintf(gmm->msg, "delta"); error = srr_send(&gfs, strlen(gmm->msg)); if(error) { printf("srr_send(gfs): %s\n", error); exit(EXIT_FAILURE); }
-    int i = 0;
-    focused = gmm->msg[i++];
-    running &= !gmm->msg[i++];
-    i += 8; // skip over W/H
-    if(gmm->msg[i++] != GFX_STAT_DLT) { printf("unexpected stat result, wanted delta time\n"); exit(EXIT_FAILURE); }
-    tick += *(int *)&gmm->msg[i];
-    delta_time = *(int *)&gmm->msg[i] / 1000.0;
+    EndMode2D();
+    EndTextureMode();
+    BeginDrawing();
+    double scale, x, y; center_fit(GetScreenWidth(), GetScreenHeight(), W, H, &scale, &x, &y);
+    if(x || y) { ClearBackground(BLACK); }
+    DrawTexturePro(framebuffer.texture, (Rectangle){0,0,W,-H}, (Rectangle){x,y,W*scale,H*scale}, (Vector2){0,0}, 0, WHITE);
+    EndDrawing();
   }
 
-  // disconnect
+  // cleanup
+  UnloadFont(font);
+  UnloadMusicStream(bg);
+  UnloadSound(snd_elf_0);
+  UnloadSound(snd_elf_2);
+  UnloadSound(snd_elf_1);
+  UnloadSound(snd_open);
+  UnloadSound(snd_locked);
+  UnloadSound(snd_empty);
+  UnloadSound(snd_flame);
+  UnloadSound(snd_wiz_1);
+  UnloadSound(snd_wiz_2);
+  UnloadSound(snd_wiz_0);
+  UnloadSound(snd_garden);
+
+  CloseAudioDevice();
+  CloseWindow();
   if(npc_id) free(npc_id);
   dict_free(&warps);
   dict_free(&npc_state);
@@ -746,8 +818,5 @@ void main(int argc, char * argv[]) {
   dict_free(&blocking_tiles);
   dict_free(&animated_tiles);
   xmlFree(tileset_image);
-  close(snd);
-  close(gfx);
-  error = srr_disconnect(&gfs); if(error) { printf("srr_disconnect(gfx): %s\n", error); exit(EXIT_FAILURE); }
-  error = srr_disconnect(&evt); if(error) { printf("srr_disconnect(evt): %s\n", error); exit(EXIT_FAILURE); }
+  return EXIT_SUCCESS;
 }
