@@ -284,8 +284,8 @@ int main(int argc, char * argv[]) {
   double t0 = GetTime();
   while(running && !WindowShouldClose()) {
     double t = GetTime(); delta_time = t - t0; t0 = t;
-    //printf("DAVE tick %f\n", t);
     tick = (uint64_t)(t * 1000); // TODO is this ported right?
+    //printf("DAVE t %f tick %d\n", t, (int)tick);
     
     UpdateMusicStream(bg);
 
@@ -729,7 +729,7 @@ int main(int argc, char * argv[]) {
         // case flame animation
         if(strcmp(npc_id, "flame") == 0) {
           uint64_t flame_period = 400;
-          res = &res[(int)((tick % flame_period) / (double)flame_period) * 8];
+          res = &res[(int)((tick % flame_period) / (double)flame_period * 8)];
         }
         double w = npc.w;
         double h = npc.h;
@@ -754,7 +754,7 @@ int main(int argc, char * argv[]) {
             DrawTexturePro(*res, (Rectangle){sx,sy,16,16}, (Rectangle){x, y + HUD_H, w, h}, (Vector2){0,0}, 0, WHITE);  
           }
         } else {
-          DrawTexturePro(*res, (Rectangle){0,0,w,h}, (Rectangle){x, y + HUD_H, w, h}, (Vector2){0,0}, 0, WHITE);  
+          DrawTexturePro(*res, (Rectangle){0,0,res->width,res->height}, (Rectangle){x, y + HUD_H, w, h}, (Vector2){0,0}, 0, WHITE);  
         }
       }
     }
