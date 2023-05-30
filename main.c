@@ -772,6 +772,9 @@ int main(int argc, char * argv[]) {
       double y = (H - HUD_H - h) / 2 + HUD_H;
       //dprintf(gfx, "fill 88888888 %f %f %f %f\n", x, y, w, h);
       //dprintf(gfx, "text DejaVuSans-Bold.ttf %f %f %f %f center left %d noclip 0 ffffff 000000 .2 %s\n", x, y, w, h, n, message);
+      {
+        DrawTextEx(font, message, (Vector2){x,y}, 16, 0, WHITE);
+      }
     }
 
     // winner animation
@@ -784,7 +787,7 @@ int main(int argc, char * argv[]) {
       double hw = W / 2;
       double hh = (H - HUD_H) / 2;
       for(double theta = 0; theta < 2 * M_PI; theta += M_PI / 5) {
-        //dprintf(gfx, "draw %s %f %f\n", held_item, cx + hw * cos(theta) * t, cy + hh * sin(theta) * t);
+        DrawTexture(*held_item, cx + hw * cos(theta) * t, cy + hh * sin(theta) * t, WHITE);
       }
     }
 
