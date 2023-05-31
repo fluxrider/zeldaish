@@ -15,6 +15,14 @@
 #include "data-util.h"
 #include <raylib.h>
 
+static bool starts_with(const char * s, const char * start) {
+  return strncmp(start, s, strlen(start)) == 0;
+}
+
+static bool str_equals(const char * s, const char * s2) {
+  return strcmp(s, s2) == 0;
+}
+
 static void center_fit(double bounds_w, double bounds_h, double surface_w, double surface_h, double * out_scale, double * out_x, double * out_y) { if ((bounds_w / bounds_h) > (surface_w / surface_h)) *out_scale = bounds_h / surface_h; else *out_scale = bounds_w / surface_w; if(out_x) *out_x = (bounds_w - surface_w * *out_scale) / 2; if(out_y) *out_y = (bounds_h - surface_h * *out_scale) / 2; }
 
 enum vk { LEFT, RIGHT, ACTION, UP, DOWN };
@@ -177,6 +185,9 @@ int main(int argc, char * argv[]) {
   
   // font
   Font font = LoadFont("DejaVuSans-Bold.ttf");
+  int line_buffer_capacity = 1;
+  char ** lines_ptr = reallocarray(NULL, line_buffer_capacity, sizeof(char *));
+  int * line_widths = reallocarray(NULL, line_buffer_capacity, sizeof(int));
 
   // world
   struct map_node fountain = {"fountain.tmx"};
@@ -761,20 +772,79 @@ int main(int argc, char * argv[]) {
     // draw player
     //printf("DAVE draw player\n");
     DrawTexturePro(texture_princess, (Rectangle){1 + facing_frame * (14 + 2), 1 + facing_index * (24 + 2),facing_mirror?-14:14,24}, (Rectangle){px, py + HUD_H, 14, 24}, (Vector2){0,0}, 0, WHITE);  
-    
+
     // message box
     if(message) {
       //printf("DAVE draw message\n");
+      char * _msg = strdup(message);
+      char * msg = _msg;
       double w = W * .8;
       double h = (H - HUD_H) * .3;
       int n = h / 10;
       double x = (W - w) / 2;
       double y = (H - HUD_H - h) / 2 + HUD_H;
-      //dprintf(gfx, "fill 88888888 %f %f %f %f\n", x, y, w, h);
-      //dprintf(gfx, "text DejaVuSans-Bold.ttf %f %f %f %f center left %d noclip 0 ffffff 000000 .2 %s\n", x, y, w, h, n, message);
+      DrawRectangle(x, y, w, h, (Color){ 136, 136, 136, 136 });
       {
-        DrawTextEx(font, message, (Vector2){x,y}, 16, 0, WHITE);
+        const char * valign = "center";
+        const char * halign = "left";
+        int line_count = n;
+        Color fill = BLACK;
+        double line_height = h / line_count;
+        double font_size = line_height;
+
+        // line break
+        int line_ptr_count = 0;
+        while(*msg) {
+          // store start of line
+          if(line_ptr_count == line_buffer_capacity) {
+            line_buffer_capacity *= 2;
+            lines_ptr = reallocarray(lines_ptr, line_buffer_capacity, sizeof(char *));
+            line_widths = reallocarray(line_widths, line_buffer_capacity, sizeof(int));
+          }
+          lines_ptr[line_ptr_count] = msg;
+          int line_width = 0;
+          char * search = msg;
+          char * good_end = search;
+          // TODO assumes w != 0
+          while(line_width <= w) {
+            good_end = search;
+            line_widths[line_ptr_count] = line_width;
+            // did we reach end of line
+            if(*search == '\0') break;
+            if(starts_with(search, "\\n")) break;
+            if(*search == ' ') search++;
+            // find next space, \\n or \0
+            while(*search != ' ' && *search != '\0' && !starts_with(search, "\\n")) search++;
+            char stored = *search; *search = '\0';
+            // measure
+            line_width = MeasureTextEx(font, msg, font_size, 0).x;
+            *search = stored;
+            // did the first word bust? we did our best.
+            if(line_width > w && good_end == msg) {
+              good_end = search;
+              line_widths[line_ptr_count] = line_width;
+            }
+          }
+          // did we reach end of line
+          if(*good_end == '\0') msg = good_end;
+          if(*good_end == ' ') msg = good_end + 1;
+          if(starts_with(good_end, "\\n")) msg = good_end + 2;
+          *good_end = '\0';
+          line_ptr_count++;
+        }
+
+        // render
+        if(str_equals(valign, "bottom")) y += h - line_ptr_count * line_height;
+        else if(str_equals(valign, "center")) y += (h - line_ptr_count * line_height) / 2;
+        for(int i = 0; i < line_ptr_count; i++) {
+          double tx = x;
+          if(str_equals(halign, "right")) tx += w - line_widths[i] - 1;
+          else if(str_equals(halign, "center")) tx += (w - line_widths[i] - 1) / 2;
+          DrawTextEx(font, lines_ptr[i], (Vector2){tx, y + line_height}, font_size, 0, fill);
+          y += line_height;
+        }
       }
+      free(_msg);
     }
 
     // winner animation
