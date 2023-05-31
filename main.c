@@ -786,7 +786,7 @@ int main(int argc, char * argv[]) {
       DrawRectangle(x, y, w, h, (Color){ 136, 136, 136, 136 });
       {
         const char * valign = "center";
-        const char * halign = "left";
+        const char * halign = "center";
         int line_count = n;
         Color fill = BLACK;
         double line_height = h / line_count;
@@ -834,6 +834,7 @@ int main(int argc, char * argv[]) {
         }
 
         // render
+        y -= line_height; // DAVE port
         if(str_equals(valign, "bottom")) y += h - line_ptr_count * line_height;
         else if(str_equals(valign, "center")) y += (h - line_ptr_count * line_height) / 2;
         for(int i = 0; i < line_ptr_count; i++) {
